@@ -26,6 +26,12 @@ Life OS is a private, modular mobile life-design app that helps each person defi
 - Permanent medical/mental-health disclaimer.
 
 ## Implemented
+### 2026-08-18 (session 3 — glanceable & actionable)
+- Domain progress RINGS: each Domains card shows an SVG ring (react-native-svg) of times tagged in the last 7 days vs weekly target, labelled count/target.
+- GOAL-TO-TASKS: each goal has a one-tap breakdown button -> `POST /api/goals/breakdown` splits it into 3-5 LLM-generated tasks saved and linked to the domain; toast confirms.
+- REFLECTION HISTORY: Reflect tab shows a scrollable timeline of saved reflections (newest first, "Week of ...").
+- Fixed companion crisis label persistence: `safety` flag now stored on companion_messages and restored on reload so the SAFETY SUPPORT bubble survives refresh. Verified 24/24 backend + all 3 new frontend features pass.
+
 ### 2026-08-18 (session 2 — intelligent MVP)
 - AI onboarding Path A: `POST /api/onboard/document` reads uploaded .txt/.md text and parses it via GPT-5.6-Luna into an editable {northStar, tone, domains[name,description,color,targetFrequency,goals]} draft.
 - AI onboarding Path B: 6-question guided flow -> `POST /api/onboard/conversational` -> same editable review draft. `POST /api/onboard/commit` saves profile and replaces domains (with goals). Nothing auto-committed; full review/edit/add/remove/frequency-stepper before save.

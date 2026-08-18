@@ -224,6 +224,61 @@ class TestCompanion:
         assert "user" in roles and "assistant" in roles
 
 
+# ---- Goals Breakdown (NEW) ----
+class TestGoalsBreakdown:
+    def test_empty_goal_rejected(self, auth_client, base_url):
+        r = auth_client.post(f"{base_url}/api/goals/breakdown", json={"goal": "", "domainId": None})
+        assert r.status_code == 400
+
+    def test_breakdown_creates_tasks_linked_to_domain(self, auth_client, base_url):
+        ws = auth_client.get(f"{base_url}/api/workspace").json()
+        assert ws["domains"], "need at least one domain seeded from commit test"
+        did = ws["domains"][0]["id"]
+        prior_task_ids = {t["id"] for t in ws["tasks"]}
+        r = auth_client.post(
+            f"{base_url}/api/goals/breakdown",
+            json={"goal": "TEST_walk 20 minutes three times a week", "domainId": did},
+            timeout=60,
+        )
+        assert r.status_code == 200
+        tasks = r.json().get("tasks", [])
+        assert 3 <= len(tasks) <= 5, f"expected 3-5 tasks, got {len(tasks)}"
+        for t in tasks:
+            assert t["title"]
+            assert t["domainId"] == did
+            assert t["dueDate"] is None
+            assert t["done"] is False
+            assert "id" in t
+        # Verify persistence via workspace
+        ws2 = auth_client.get(f"{base_url}/api/workspace").json()
+        new_ids = {t["id"] for t in ws2["tasks"]} - prior_task_ids
+        assert len(new_ids) >= len(tasks) or all(t["id"] in {x["id"] for x in ws2["tasks"]} for t in tasks)
+        # Every created task must be findable in workspace tasks
+        ws_task_ids = {t["id"] for t in ws2["tasks"]}
+        for t in tasks:
+            assert t["id"] in ws_task_ids
+
+
+# ---- Reflection History surface (NEW) ----
+class TestReflectionHistory:
+    def test_saved_reflection_shows_in_workspace_reflections(self, auth_client, base_url):
+        # Save two weeks so history has multiple entries
+        auth_client.put(f"{base_url}/api/reflection", json={
+            "weekStart": "2026-01-05",
+            "generatedText": "TEST_reflection week1 content saved for history verification.",
+            "userEdited": True,
+        })
+        auth_client.put(f"{base_url}/api/reflection", json={
+            "weekStart": "2025-12-29",
+            "generatedText": "TEST_reflection week2 content saved for history verification.",
+            "userEdited": False,
+        })
+        ws = auth_client.get(f"{base_url}/api/workspace").json()
+        weeks = {r["weekStart"]: r for r in ws["reflections"]}
+        assert "2026-01-05" in weeks and "2025-12-29" in weeks
+        assert "TEST_reflection" in weeks["2026-01-05"]["generatedText"]
+
+
 # ---- Per-user isolation ----
 class TestIsolation:
     def test_other_user_cannot_see_data(self, api_client, base_url):

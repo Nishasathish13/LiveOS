@@ -87,6 +87,10 @@ class ReflectionSaveInput(BaseModel):
     generatedText: str
     userEdited: bool = True
 
+class GoalBreakdownInput(BaseModel):
+    goal: str
+    domainId: Optional[str] = None
+
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
@@ -189,7 +193,7 @@ async def companion(input: ChatInput, user=__import__('fastapi').Depends(current
         prompt = f"You are Life OS companion. Tone: {profile.get('companionTone','gentle companion')}. North star: {profile.get('northStar','not set')}. Domains: {domains}. Recent logs: {logs}. Never diagnose or give medical, legal, or financial advice. Treat suggestions as editable drafts and cite the supplied data. User: {input.text}"
         chat = LlmChat(api_key=os.getenv("EMERGENT_LLM_KEY"), session_id=uid, system_message=prompt).with_model("openai", "gpt-5.6-luna")
         answer = (await chat.send_message(UserMessage(text=input.text))).strip()
-    await db.companion_messages.insert_many([{ "user_id": uid, "role": "user", "text": input.text, "timestamp": now_iso() }, {"user_id": uid, "role": "assistant", "text": answer, "timestamp": now_iso()}])
+    await db.companion_messages.insert_many([{ "user_id": uid, "role": "user", "text": input.text, "timestamp": now_iso(), "safety": False }, {"user_id": uid, "role": "assistant", "text": answer, "timestamp": now_iso(), "safety": crisis}])
     return {"text": answer, "isSafety": crisis}
 
 PALETTE = ["#294A3A", "#B85C45", "#C58C32", "#A9B9A2", "#6B7A8F", "#8A6D9B", "#4E6E58", "#9B6D5C"]
@@ -297,6 +301,36 @@ async def save_reflection(input: ReflectionSaveInput, user=Depends(current_user)
     item = {"user_id": uid, "weekStart": input.weekStart, "generatedText": input.generatedText, "userEdited": input.userEdited, "updated_at": now_iso()}
     await db.reflection_summaries.replace_one({"user_id": uid, "weekStart": input.weekStart}, item, upsert=True)
     return item
+
+
+@api_router.post("/goals/breakdown")
+async def goal_breakdown(input: GoalBreakdownInput, user=Depends(current_user)):
+    goal = (input.goal or "").strip()
+    if not goal:
+        raise HTTPException(400, "No goal provided")
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    system = (
+        "You break a personal goal into 3-5 small, concrete, actionable next tasks. "
+        "Return ONLY a JSON array of short task title strings (each <= 8 words), no numbering, no extra text."
+    )
+    chat = LlmChat(api_key=os.getenv("EMERGENT_LLM_KEY"), session_id=f"goal_{user['user_id']}", system_message=system).with_model("openai", "gpt-5.6-luna")
+    raw = (await chat.send_message(UserMessage(text=f"Goal: {goal}"))).strip()
+    match = re.search(r"\[.*\]", raw, re.DOTALL)
+    titles: List[str] = []
+    if match:
+        try:
+            titles = [str(t).strip() for t in json.loads(match.group(0)) if str(t).strip()][:5]
+        except json.JSONDecodeError:
+            titles = []
+    if not titles:
+        titles = [goal]
+    created = []
+    for t in titles:
+        item = {"id": uuid.uuid4().hex[:10], "user_id": user["user_id"], "title": t, "dueDate": None, "domainId": input.domainId, "done": False}
+        await db.tasks.insert_one(item)
+        item.pop("_id", None)
+        created.append(item)
+    return {"tasks": created}
 
 
 # Include the router in the main app

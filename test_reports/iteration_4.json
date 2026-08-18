@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 4 focused on the 3 NEW features (progress rings, goal-to-tasks breakdown, reflection history) plus regression smoke. Backend: 24/24 pytest cases pass (21 regression + 3 new: TestGoalsBreakdown.empty-goal-400, TestGoalsBreakdown.breakdown-creates-3-to-5-tasks-linked-to-domain-and-persisted, TestReflectionHistory.multi-week-persistence). Frontend E2E on mobile viewport (390x844) with fixture token pre-seeded in localStorage: (1) RINGS render as SVGs on Domains tab with '0/7', '0/4', '0/2' labels next to TEST_Sleep/Movement/Family — 3 SVG rings confirmed, no web crash. (2) BREAKDOWN: tapping [data-testid=breakdown-0c1b544aad-0] triggers loading spinner then domain-toast 'Added 4 tasks to your ledger.'; navigating to Tasks tab shows the 4 newly created tasks under UPCOMING linked to TEST_Sleep ('Set a 10:30 bedtime alarm', 'Finish evening tasks by 10:30', 'Put devices away at 10:45', 'Get into bed by 10:55'). (3) REFLECTION HISTORY: history-0 and history-1 testIDs found on Reflect tab, 'REFLECTION HISTORY' label visible, first card shows 'WEEK OF JAN 5, 2026' + saved paragraph. Regression: save-checkin present on Today tab, Companion crisis prompt returns text with '988' (crisis-line resource). No red screens, no deprecated Expo packages introduced.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Companion safety bubble label", "issue": "When backend returns isSafety=true (crisis fallback), the bubble label rendered as 'AI DRAFT' instead of 'SAFETY SUPPORT' in this run. The bubble style also may not switch to safetyBubble. Crisis TEXT with '988' is still shown so user safety information is delivered, but the visual affordance signalling it is a safety response (not an AI draft) is missing. File: /app/frontend/app/index.tsx line 236 — verify result.isSafety is truthy on the assistant push in state and that JSON.parse casing matches backend key.", "testID": "chat-input/send-chat", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_4.json",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/backend/tests/test_lifeos_backend.py",
+    "/app/test_reports/ui/iter4_domains.jpeg",
+    "/app/test_reports/ui/iter4_breakdown_toast.jpeg",
+    "/app/test_reports/ui/iter4_tasks.jpeg",
+    "/app/test_reports/ui/iter4_reflect_history.jpeg",
+    "/app/test_reports/ui/iter4_today.jpeg",
+    "/app/test_reports/ui/iter4_companion_crisis.jpeg"
+  ],
+  "action_items": [
+    "MEDIUM: Verify companion crisis bubble shows the 'SAFETY SUPPORT' label + safetyBubble background when backend returns isSafety=true. The crisis text (988) is delivered but the visual differentiation is currently missing — this was working in iteration 3, so investigate whether the recent index.tsx refactor for rings/breakdown/history dropped the safety flag when appending the assistant message (index.tsx ~line 231, setMessages call).",
+    "OPTIONAL: rings only compute weekly count for the current-week window; consider making the label read '{count}/{targetFrequency}' more accessible via aria/accessibilityLabel for screen readers."
+  ],
+  "critical_code_review_comments": [
+    "server.py /api/goals/breakdown correctly rejects empty goals with 400, clamps LLM output to <=5 tasks, and persists tasks with domainId linkage, dueDate=null, done=false. UUID id generation and _id exclusion are consistent with existing patterns.",
+    "server.py falls back to `titles = [goal]` if JSON parse fails, but this violates the '3-5 tasks' contract — the endpoint would return 1 task on LLM failure. Consider returning 500 or retrying instead of silently creating a single task. Non-blocking because LLM did return valid JSON on all test runs.",
+    "index.tsx <Ring /> component uses react-native-svg which renders correctly on web (SVG DOM confirmed). Ring color falls back gracefully when d.targetFrequency is 0 via `|| 1` guard.",
+    "index.tsx REFLECTION HISTORY iterates workspace.reflections directly — assumes backend already returns newest-first. Backend /api/workspace should confirm sort order (currently sorted by updated_at desc — verified via test, matches expectation).",
+    "index.tsx breakdown handler correctly disables the button while busy and shows ActivityIndicator; toast auto-dismisses at 3000ms — good UX."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_lifeos_backend.py",
+    "/app/test_reports/iteration_4.json"
+  ],
+  "success_rate": {"backend": "24/24 (100%)", "frontend": "5/5 flows (100%) — rings render, breakdown+toast+tasks-tab persistence, reflection history cards, today-tab regression, companion crisis-text 988 delivery. Minor: safety bubble label regression noted."},
+  "seed_data_creation": "Re-ran /app/backend/seed_test_user.py. Backend goal-breakdown test created 3-5 TEST_ tasks linked to TEST_Sleep domain. Reflection-history test saved 2 reflections (2026-01-05 and 2025-12-29). UI run additionally created 4 more tasks via the breakdown UI on TEST_Sleep 'in bed by 11' goal.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend URL: https://companion-compass.preview.emergentagent.com. Fixture token: test-session-lifeos-fixture-0001. Pytest suite at /app/backend/tests/test_lifeos_backend.py now has TestGoalsBreakdown and TestReflectionHistory classes. UI test: set localStorage 'lifeos_token' via page.add_init_script BEFORE goto. Rings render as <svg> tags with react-native-svg web shim. Breakdown testIDs are `breakdown-<domainId>-<goalIndex>`; toast testID is 'domain-toast'. Reflection history testIDs are 'history-<i>' where 0 is newest. If retesting the SAFETY bubble label issue, ensure the assistant message state carries safety: result.isSafety (boolean) — check /app/frontend/app/index.tsx around line 231.",
+  "rca_of_issue": "The MEDIUM finding on the companion crisis label appears to be a visual-only regression introduced during the multi-feature refactor. Backend behavior is correct (isSafety=true, text includes crisis resources). Root cause is likely in the Companion component's message rendering (index.tsx ~L236) where the ternary selecting 'SAFETY SUPPORT' vs 'AI DRAFT' depends on m.safety — need to verify result.isSafety key is being read (backend returns 'isSafety', case-sensitive JSON) and stored properly. Mitigation: main agent to add `safety: !!result.isSafety` and re-run the crisis prompt to confirm the 'SAFETY SUPPORT' label + green-safe styling appear."
+}

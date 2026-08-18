@@ -1,0 +1,64 @@
+{
+  "product": "Life OS",
+  "context": "mobile-first Expo/React app with FastAPI backend",
+  "design_context": "Mobile/Web App",
+  "phase_1_discovery": {
+    "audience": "People designing a life across self-defined domains, including users who may be overwhelmed by rigid productivity systems.",
+    "primary_tasks": ["understand personal context", "define domains and goals", "complete a low-friction daily check-in", "manage tasks and deliberate rest", "review patterns without judgment", "use AI as an editable thinking partner"],
+    "success_actions": ["finish onboarding and create at least one domain", "complete first check-in", "create or complete a task", "save an edited weekly reflection", "return to companion chat"],
+    "emotional_tone": "Grounded, intimate, observant, quietly optimistic; never clinical, gamified, or authoritative.",
+    "theme": "Warm light-first theme with optional dark mode. Light is preferable for journaling and reflection; dark mode uses warm charcoal, not pure black.",
+    "design_fusion": ["editorial notebook margins", "Swiss information grids", "tactile paper and clay textures", "calm utility dashboard patterns"]
+  },
+  "design_directions": [
+    {"name": "Field Notes", "probability": 0.28, "description": "A personal field journal with asymmetrical paper panels, handwritten accent marks, and precise data rails. Best default direction."},
+    {"name": "Quiet Observatory", "probability": 0.22, "description": "A soft observatory for noticing patterns: dark ink surfaces, warm lunar accent, restrained charts, and large negative space."},
+    {"name": "Modular Atelier", "probability": 0.2, "description": "A studio workbench where domains behave like movable labeled materials; tactile controls and color-coded modules make customization visible."},
+    {"name": "The Daily Ledger", "probability": 0.17, "description": "A high-trust editorial ledger with column rules, dates, small factual annotations, and no streak pressure."},
+    {"name": "Campfire Companion", "probability": 0.13, "description": "A warmer conversational route using ember accents, rounded message surfaces, and a visible rest ritual; use sparingly so it does not feel childish."}
+  ],
+  "research_descriptors": [
+    {"reference": "Mobbin Stoic reflection flow", "descriptors": ["structured morning/evening prompts", "sleep and mood ratings before writing", "completion feedback within the same flow", "progressive disclosure reduces blank-page anxiety"]},
+    {"reference": "Mobbin long onboarding study", "descriptors": ["show progress early", "ask personal questions", "reflect answers back to the user", "let users try value before commitment"]},
+    {"reference": "Rise & Bloom / journal case studies", "descriptors": ["calm distraction-free surfaces", "soft nature palette", "generous whitespace", "accessible touch targets and readable hierarchy"]},
+    {"reference": "Reflective dashboard research", "descriptors": ["distill raw logs into summaries", "surface contrastive observations rather than verdicts", "allow correction and deletion of learned history", "make AI learning explicit and verifiable"]}
+  ],
+  "typography": {
+    "heading_font": "Cormorant Garamond",
+    "body_font": "IBM Plex Sans",
+    "ui_mono_font": "IBM Plex Mono",
+    "rules": ["Do not use Inter or Roboto for headings.", "Headings use tracking-tight and leading-none; body uses leading-relaxed.", "Overlines are uppercase, text-xs, tracking-[0.2em].", "Use text-4xl to text-6xl maximum for H1, text-2xl to text-4xl for H2, and text-base for body.", "Use font-[450] or font-[650] where supported to avoid default boldness."]
+  },
+  "colors": {
+    "archetype": "Organic & Earthy with Swiss functional accents",
+    "light": {"canvas": "#F5F1E8", "surface": "#FFFDF7", "surface_alt": "#E9E3D7", "ink": "#242728", "muted_ink": "#62645F", "forest": "#294A3A", "clay": "#B85C45", "ochre": "#C58C32", "sage": "#A9B9A2", "line": "#D6D0C3"},
+    "dark": {"canvas": "#202426", "surface": "#292D2E", "surface_alt": "#343938", "ink": "#F4F0E7", "muted_ink": "#B4B7AF", "forest": "#A6C5A8", "clay": "#E17B61", "ochre": "#D7A64A", "line": "#4B514D"},
+    "usage": ["Use forest for primary actions only.", "Use clay for selected state or rest emphasis, never danger by color alone.", "Use ochre for factual attention flags.", "Never use pure #000000 or #808080.", "No full-screen gradients; texture and contrast create depth."]
+  },
+  "layouts": {
+    "navigation": "Persistent bottom tab bar on mobile: Today, Tasks, Reflect, Domains; Companion is a floating but non-blocking action. Desktop adds a visible top/side navigation with 3-5 links and a primary CTA.",
+    "home": "Asymmetric editorial composition: greeting and date at top-left, check-in action dominant, a narrow observation rail, then tasks and rest modules.",
+    "onboarding": "One decision per screen. Choice screen first: Upload your story or Build it together. Show progress indicator and a privacy promise. Review parsed profile as editable blocks before saving.",
+    "check_in": "Vertical sequence: mood 1-5, sleep hours, domains touched, activities, chosen rest, optional voice input. End with a neutral confirmation, not a score.",
+    "reflection": "Dense but calm 4-column desktop / single-column mobile layout: mood trend, domain balance, factual balance flags, editable AI draft. Every insight has source dates and an edit action.",
+    "grid": "Mobile-first grid-cols-1. On wider screens use Tetris-style md:grid-cols-8 lg:grid-cols-12 with gap-8; vary dominant, square, tall, and filler spans. Dashboard data modules may use lg:grid-cols-4 gap-4, with main chart spanning 2 and feed spanning 1 row-span-2.",
+    "spacing": "Use p-6/p-8 inside bordered surfaces and py-12/py-20 between sections. Avoid cramped cards. Containers should align to an 8px rhythm."
+  },
+  "components": [
+    {"name": "AppShell", "component_path": "frontend/src/components/AppShell.js", "instructions": "Solid or opaque glass header with brand, navigation, privacy status, and profile menu."},
+    {"name": "OnboardingPathChoice", "component_path": "frontend/src/components/onboarding/OnboardingPathChoice.js", "instructions": "Two large accessible option panels; no decorative AI imagery; explain what is private and editable."},
+    {"name": "DomainModule", "component_path": "frontend/src/components/domains/DomainModule.js", "instructions": "Flat tactile module with editable name, description, icon/color, frequency, and progress definition."},
+    {"name": "CheckInFlow", "component_path": "frontend/src/components/checkin/CheckInFlow.js", "instructions": "Use shadcn primitives for inputs, sliders, dialogs, and toast feedback; support device speech-to-text."},
+    {"name": "TaskBoard", "component_path": "frontend/src/components/tasks/TaskBoard.js", "instructions": "Group overdue/upcoming/done, use due-date picker rather than native date input, and request local notifications during task setup."},
+    {"name": "ReflectionDashboard", "component_path": "frontend/src/components/reflection/ReflectionDashboard.js", "instructions": "Use Recharts/Shadcn chart primitives only for clear trends; show source and edit affordances."},
+    {"name": "CompanionChat", "component_path": "frontend/src/components/companion/CompanionChat.js", "instructions": "Persistent chat with tone preset selector, AI label, editable suggestion drafts, and safety fallback."}
+  ],
+  "visual_enhancers": ["Subtle paper grain via CSS background texture at low opacity", "thin editorial rules and margin annotations", "layered ambient shadows plus crisp 1px tinted borders", "small domain color swatches and icon stamps", "custom scrollbar without gutter", "no more than 20% gradient and never a generic hero gradient"],
+  "motion": {"principles": ["Use Framer Motion or CSS for short entrance stagger and tactile press feedback.", "Animate opacity and transform explicitly, never transition: all.", "Cards lift 2-4px on hover; buttons scale 0.98 on press; check-in completion uses a calm reveal.", "Respect prefers-reduced-motion and disable parallax/stagger when requested."], "loading": "Use a quiet skeleton with pulsing paper blocks, never a spinner-only blank screen."},
+  "accessibility": ["All interactive and key informational elements require data-testid in kebab-case.", "Touch targets minimum 44px.", "Meet WCAG AA contrast: normal text 4.5:1, large text 3:1; do not rely on color for domain or mood meaning.", "Keyboard focus must be visible and higher contrast than default.", "Use labels, helper text, screen-reader announcements, and logical focus management for dialogs.", "Sensitive data is private by default; make sharing/export explicit.", "Permanent disclaimer: AI is not a medical, mental-health, legal, or financial authority; suggestions are drafts.", "If crisis language appears, pause normal coaching, respond calmly with grounding and local crisis resources, and encourage immediate human support.", "Never diagnose, claim certainty, or imply surveillance."],
+  "media": {"strategy": "No stock imagery is required for the core MVP. Prefer typographic and tactile visual language. If imagery is later added, use only image_selector_tool results and preserve privacy; never use placeholder URLs.", "image_urls": []},
+  "3d_libraries": {"selected": false, "reason": "The product needs clarity and trust more than immersion. Avoid 3D in MVP to protect performance and emotional calm.", "future_option": "React Three Fiber only for an optional domain constellation, lazy-loaded in Suspense with transparent background and adequate lighting."},
+  "implementation_notes_for_js": ["Use .js files, not .tsx files.", "Use Tailwind classes and existing shadcn primitives for advanced interactions.", "Use Sonner for notifications/toasts; do not build custom toast logic.", "Use shadcn Select/DropdownMenu and Calendar instead of native select/date controls.", "Keep grid items as direct children of the grid; animation wrappers must carry the grid span classes.", "Do not center the entire app container or add text-align:center globally.", "Use opaque backgrounds for headers, menus, dialogs, and overlays; never complete transparent surfaces over content."],
+  "GENERAL UI UX DESIGN GUIDELINES": ["Design for observation, not judgment: use factual language such as 'You logged...' rather than 'You failed...'.", "Make deliberate rest a first-class action equal in visual weight to tasks.", "AI suggestions must be editable drafts with clear provenance and dismiss/edit controls.", "Avoid streak pressure, confetti, badges, diagnosis, certainty, and generic life categories.", "Every screen should have one emotionally obvious next action.", "Use generous negative space, asymmetric alignment, and restrained color so personal content remains the hero.", "Every button, link, input, menu, chart, balance, error, and confirmation needs a stable data-testid.", "Test mobile widths, large text, keyboard navigation, reduced motion, offline/error states, and private data isolation."],
+  "instructions_to_main_agent": "Build the MVP as a calm, modular personal instrument. Start with the Today experience and onboarding path choice, then connect Tasks, Reflect, Domains, and Companion through persistent navigation. Keep all AI output labeled and editable. Do not invent medical claims or use placeholder imagery. Validate all primary flows with data-testid selectors."
+}

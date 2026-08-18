@@ -279,6 +279,127 @@ class TestReflectionHistory:
         assert "TEST_reflection" in weeks["2026-01-05"]["generatedText"]
 
 
+# ---- Roadmap engine (NEW) ----
+class TestRoadmap:
+    def test_generate_returns_suggestions_and_persists(self, auth_client, base_url):
+        # ensure at least one recent log so recentTouchesLast14Days has data
+        ws = auth_client.get(f"{base_url}/api/workspace").json()
+        assert ws["domains"], "need domains from commit test"
+        did = ws["domains"][0]["id"]
+        auth_client.post(f"{base_url}/api/logs", json={
+            "date": "2026-01-07", "activities": "TEST_walk 20", "moodScore": 4,
+            "sleepHours": 7.0, "domainsTouched": [did], "isRestDay": False,
+        })
+        r = auth_client.post(f"{base_url}/api/roadmap/generate", timeout=90)
+        assert r.status_code == 200
+        suggestions = r.json().get("suggestions", [])
+        # Contract: only domains where suggestedTarget != current
+        for s in suggestions:
+            assert 1 <= s["suggestedTarget"] <= 7
+            assert s["suggestedTarget"] != s["currentTarget"]
+            assert s["status"] == "pending"
+            for k in ("id", "domainId", "domainName", "rationale"):
+                assert k in s
+        # Workspace roadmap should mirror pending suggestions
+        ws2 = auth_client.get(f"{base_url}/api/workspace").json()
+        assert "roadmap" in ws2
+        pending_ids = {s["id"] for s in ws2["roadmap"]}
+        for s in suggestions:
+            assert s["id"] in pending_ids
+        pytest._roadmap_suggestions = suggestions
+
+    def test_apply_updates_domain_target_and_marks_accepted(self, auth_client, base_url):
+        suggestions = getattr(pytest, "_roadmap_suggestions", [])
+        if not suggestions:
+            pytest.skip("no suggestions produced")
+        s = suggestions[0]
+        r = auth_client.post(f"{base_url}/api/roadmap/{s['id']}/apply")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["targetFrequency"] == s["suggestedTarget"]
+        # Verify domain target updated & suggestion removed from pending
+        ws = auth_client.get(f"{base_url}/api/workspace").json()
+        dom = next((d for d in ws["domains"] if d["id"] == s["domainId"]), None)
+        assert dom is not None
+        assert dom["targetFrequency"] == s["suggestedTarget"]
+        assert s["id"] not in {r["id"] for r in ws["roadmap"]}
+
+    def test_dismiss_removes_from_pending(self, auth_client, base_url):
+        suggestions = getattr(pytest, "_roadmap_suggestions", [])
+        remaining = [s for s in suggestions[1:]] if len(suggestions) > 1 else []
+        if not remaining:
+            pytest.skip("need >1 suggestion for dismiss test")
+        s = remaining[0]
+        r = auth_client.post(f"{base_url}/api/roadmap/{s['id']}/dismiss")
+        assert r.status_code == 200
+        ws = auth_client.get(f"{base_url}/api/workspace").json()
+        assert s["id"] not in {r["id"] for r in ws["roadmap"]}
+
+    def test_unknown_id_404(self, auth_client, base_url):
+        assert auth_client.post(f"{base_url}/api/roadmap/nope-xyz/apply").status_code == 404
+        assert auth_client.post(f"{base_url}/api/roadmap/nope-xyz/dismiss").status_code == 404
+
+
+# ---- Tone tuning (NEW) ----
+class TestToneTuning:
+    def test_profile_put_persists_directiveness(self, auth_client, base_url):
+        r = auth_client.put(f"{base_url}/api/profile", json={
+            "northStar": "Rebuild energy with warmth and slowness.",
+            "companionTone": "gentle companion",
+            "directiveness": 80,
+        })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["directiveness"] == 80
+        ws = auth_client.get(f"{base_url}/api/workspace").json()
+        assert ws["profile"].get("directiveness") == 80
+
+    def test_feedback_too_pushy_lowers_by_15(self, auth_client, base_url):
+        # set baseline
+        auth_client.put(f"{base_url}/api/profile", json={
+            "northStar": "Rebuild energy.", "companionTone": "gentle companion", "directiveness": 50,
+        })
+        r = auth_client.post(f"{base_url}/api/companion/feedback", json={"kind": "too_pushy"})
+        assert r.status_code == 200
+        assert r.json()["directiveness"] == 35
+        ws = auth_client.get(f"{base_url}/api/workspace").json()
+        assert ws["profile"]["directiveness"] == 35
+
+    def test_feedback_too_soft_raises_by_15(self, auth_client, base_url):
+        auth_client.put(f"{base_url}/api/profile", json={
+            "northStar": "Rebuild energy.", "companionTone": "gentle companion", "directiveness": 50,
+        })
+        r = auth_client.post(f"{base_url}/api/companion/feedback", json={"kind": "too_soft"})
+        assert r.status_code == 200
+        assert r.json()["directiveness"] == 65
+
+    def test_feedback_floor_and_cap(self, auth_client, base_url):
+        auth_client.put(f"{base_url}/api/profile", json={
+            "northStar": "x", "companionTone": "gentle companion", "directiveness": 5,
+        })
+        r = auth_client.post(f"{base_url}/api/companion/feedback", json={"kind": "too_pushy"})
+        assert r.json()["directiveness"] == 0
+        auth_client.put(f"{base_url}/api/profile", json={
+            "northStar": "x", "companionTone": "gentle companion", "directiveness": 95,
+        })
+        r = auth_client.post(f"{base_url}/api/companion/feedback", json={"kind": "too_soft"})
+        assert r.json()["directiveness"] == 100
+
+    def test_feedback_unknown_kind_400(self, auth_client, base_url):
+        r = auth_client.post(f"{base_url}/api/companion/feedback", json={"kind": "bogus"})
+        assert r.status_code == 400
+
+    def test_companion_still_responds_after_tune(self, auth_client, base_url):
+        # Ensure directiveness change doesn't break the /companion endpoint
+        auth_client.put(f"{base_url}/api/profile", json={
+            "northStar": "x", "companionTone": "direct coach", "directiveness": 90,
+        })
+        r = auth_client.post(f"{base_url}/api/companion", json={"text": "Suggest a small next step for movement."}, timeout=60)
+        assert r.status_code == 200
+        assert r.json().get("isSafety") is False
+        assert isinstance(r.json().get("text"), str) and len(r.json()["text"]) > 5
+
+
 # ---- Per-user isolation ----
 class TestIsolation:
     def test_other_user_cannot_see_data(self, api_client, base_url):

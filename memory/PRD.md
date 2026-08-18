@@ -26,6 +26,12 @@ Life OS is a private, modular mobile life-design app that helps each person defi
 - Permanent medical/mental-health disclaimer.
 
 ## Implemented
+### 2026-08-18 (session 4 — adaptive intelligence)
+- DYNAMIC ROADMAP ENGINE: Domains tab "Weekly Roadmap" — `POST /api/roadmap/generate` reviews last-14-day logs vs each domain's goals/target and proposes an updated weekly target as pending suggestion cards (current→suggested + neutral rationale). Approve (`/roadmap/{id}/apply`) updates the domain target; Dismiss (`/roadmap/{id}/dismiss`). Never auto-applied. Suggestions stored in roadmap_suggestions and surfaced in workspace.roadmap.
+- DEVIATION DETECTION WITH MEMORY: `deviationNote` distinguishes active ("last logged N days ago"), quiet-with-rest ("quiet for N days — you chose rest on M of them", with a rest tag), and quiet-no-explanation ("no entries in N days"). Applied to Reflect domain balance and Today observation.
+- TONE/PERSONALITY TUNING: profile gains `directiveness` (0-100). Companion "Tune companion" panel with tone presets + a gentle↔firm Slider (saved via PUT /profile). Per-reply feedback buttons ("Too pushy"/"Too soft") -> `POST /api/companion/feedback` shift directiveness ±15. Companion system prompt now includes the directiveness level.
+- Verified 34/34 backend pytest + 6/6 new frontend flows pass.
+
 ### 2026-08-18 (session 3 — glanceable & actionable)
 - Domain progress RINGS: each Domains card shows an SVG ring (react-native-svg) of times tagged in the last 7 days vs weekly target, labelled count/target.
 - GOAL-TO-TASKS: each goal has a one-tap breakdown button -> `POST /api/goals/breakdown` splits it into 3-5 LLM-generated tasks saved and linked to the domain; toast confirms.

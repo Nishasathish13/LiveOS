@@ -36,6 +36,7 @@ class SessionInput(BaseModel):
 class ProfileInput(BaseModel):
     northStar: str = ""
     companionTone: str = "gentle companion"
+    directiveness: int = 50
 
 class DomainInput(BaseModel):
     name: str
@@ -91,8 +92,18 @@ class GoalBreakdownInput(BaseModel):
     goal: str
     domainId: Optional[str] = None
 
+class FeedbackInput(BaseModel):
+    kind: str  # 'too_pushy' | 'too_soft'
+
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
+
+def directiveness_note(d: int) -> str:
+    if d <= 33:
+        return "Lean gentle and non-directive: offer soft, optional suggestions, validate feelings, and avoid pushing."
+    if d >= 67:
+        return "Lean firm and direct: give clear, decisive, concrete next steps while staying respectful and kind."
+    return "Stay balanced: supportive and warm, but offer clear suggestions when useful."
 
 async def current_user(authorization: Optional[str] = Header(None)):
     if not authorization or not authorization.lower().startswith("bearer "):
@@ -139,12 +150,14 @@ async def me(user=__import__('fastapi').Depends(current_user)):
 async def workspace(user=__import__('fastapi').Depends(current_user)):
     uid = user["user_id"]
     profile = await db.profiles.find_one({"user_id": uid}, {"_id": 0}) or {"user_id": uid, "northStar": "", "companionTone": user.get("tone", "gentle companion")}
+    profile.setdefault("directiveness", 50)
     domains = await db.domains.find({"user_id": uid}, {"_id": 0}).to_list(50)
     logs = await db.daily_logs.find({"user_id": uid}, {"_id": 0}).sort("date", -1).to_list(30)
     tasks = await db.tasks.find({"user_id": uid}, {"_id": 0}).sort("dueDate", 1).to_list(100)
     reflections = await db.reflection_summaries.find({"user_id": uid}, {"_id": 0}).sort("weekStart", -1).to_list(12)
     messages = await db.companion_messages.find({"user_id": uid}, {"_id": 0}).sort("timestamp", 1).to_list(200)
-    return {"user": user, "profile": profile, "domains": domains, "logs": logs, "tasks": tasks, "reflections": reflections, "messages": messages}
+    roadmap = await db.roadmap_suggestions.find({"user_id": uid, "status": "pending"}, {"_id": 0}).sort("created_at", -1).to_list(20)
+    return {"user": user, "profile": profile, "domains": domains, "logs": logs, "tasks": tasks, "reflections": reflections, "messages": messages, "roadmap": roadmap}
 
 @api_router.put("/profile")
 async def save_profile(input: ProfileInput, user=__import__('fastapi').Depends(current_user)):
@@ -190,7 +203,8 @@ async def companion(input: ChatInput, user=__import__('fastapi').Depends(current
         answer = "I’m really sorry this feels heavy. Please pause and move somewhere safer, take one slow breath, and contact someone you trust now. If you may act on these thoughts, call your local emergency number or a crisis line (US/Canada: 988). I can stay with you, but I’m not a crisis service."
     else:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
-        prompt = f"You are Life OS companion. Tone: {profile.get('companionTone','gentle companion')}. North star: {profile.get('northStar','not set')}. Domains: {domains}. Recent logs: {logs}. Never diagnose or give medical, legal, or financial advice. Treat suggestions as editable drafts and cite the supplied data. User: {input.text}"
+        d = int(profile.get("directiveness", 50))
+        prompt = f"You are Life OS companion. Tone preset: {profile.get('companionTone','gentle companion')}. Directiveness {d}/100 — {directiveness_note(d)} North star: {profile.get('northStar','not set')}. Domains: {domains}. Recent logs: {logs}. Never diagnose or give medical, legal, or financial advice. Treat suggestions as editable drafts and cite the supplied data. User: {input.text}"
         chat = LlmChat(api_key=os.getenv("EMERGENT_LLM_KEY"), session_id=uid, system_message=prompt).with_model("openai", "gpt-5.6-luna")
         answer = (await chat.send_message(UserMessage(text=input.text))).strip()
     await db.companion_messages.insert_many([{ "user_id": uid, "role": "user", "text": input.text, "timestamp": now_iso(), "safety": False }, {"user_id": uid, "role": "assistant", "text": answer, "timestamp": now_iso(), "safety": crisis}])
@@ -262,7 +276,8 @@ async def onboard_conversational(input: ConversationalInput, user=Depends(curren
 @api_router.post("/onboard/commit")
 async def onboard_commit(input: CommitInput, user=Depends(current_user)):
     uid = user["user_id"]
-    await db.profiles.replace_one({"user_id": uid}, {"user_id": uid, "northStar": input.northStar, "companionTone": input.companionTone}, upsert=True)
+    existing = await db.profiles.find_one({"user_id": uid}, {"_id": 0}) or {}
+    await db.profiles.replace_one({"user_id": uid}, {"user_id": uid, "northStar": input.northStar, "companionTone": input.companionTone, "directiveness": existing.get("directiveness", 50)}, upsert=True)
     await db.users.update_one({"user_id": uid}, {"$set": {"tone": input.companionTone}})
     created = []
     if input.domains:
@@ -331,6 +346,93 @@ async def goal_breakdown(input: GoalBreakdownInput, user=Depends(current_user)):
         item.pop("_id", None)
         created.append(item)
     return {"tasks": created}
+
+
+@api_router.post("/roadmap/generate")
+async def roadmap_generate(user=Depends(current_user)):
+    uid = user["user_id"]
+    domains = await db.domains.find({"user_id": uid}, {"_id": 0}).to_list(20)
+    if not domains:
+        return {"suggestions": []}
+    logs = await db.daily_logs.find({"user_id": uid}, {"_id": 0}).sort("date", -1).to_list(40)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).date().isoformat()
+    summary = []
+    for d in domains:
+        cnt = sum(1 for l in logs if l.get("date", "") >= cutoff and d["id"] in (l.get("domainsTouched") or []))
+        summary.append({"domainId": d["id"], "name": d["name"], "currentTarget": d.get("targetFrequency", 3), "recentTouchesLast14Days": cnt, "goals": d.get("goals", [])})
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    system = (
+        "You are the roadmap engine for Life OS. Review each domain's stated goals, its current weekly target frequency, and how "
+        "often it was actually touched in the last 14 days. Suggest a realistic updated weekly target (integer 1-7) per domain that "
+        "better fits reality and the goals — it is fine to lower a target to reduce pressure, or raise it when there is clear momentum. "
+        "Return ONLY a JSON array of objects {domainId, suggestedTarget, rationale (<=20 words, neutral, factual, no guilt)}. "
+        "Only include a domain when suggestedTarget differs from its current target. These are suggestions the user approves or "
+        "rejects — never phrase them as commands, and never auto-apply."
+    )
+    chat = LlmChat(api_key=os.getenv("EMERGENT_LLM_KEY"), session_id=f"roadmap_{uid}", system_message=system).with_model("openai", "gpt-5.6-luna")
+    raw = (await chat.send_message(UserMessage(text=f"Domains data: {summary}"))).strip()
+    match = re.search(r"\[.*\]", raw, re.DOTALL)
+    parsed = []
+    if match:
+        try:
+            parsed = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            parsed = []
+    await db.roadmap_suggestions.delete_many({"user_id": uid, "status": "pending"})
+    by_id = {d["id"]: d for d in domains}
+    suggestions = []
+    for p in parsed:
+        dom = by_id.get(p.get("domainId"))
+        if not dom:
+            continue
+        try:
+            st = max(1, min(7, int(p.get("suggestedTarget"))))
+        except (ValueError, TypeError):
+            continue
+        if st == dom.get("targetFrequency", 3):
+            continue
+        item = {"id": uuid.uuid4().hex[:10], "user_id": uid, "domainId": dom["id"], "domainName": dom["name"], "currentTarget": dom.get("targetFrequency", 3), "suggestedTarget": st, "rationale": str(p.get("rationale", ""))[:160], "status": "pending", "created_at": now_iso()}
+        await db.roadmap_suggestions.insert_one(item)
+        item.pop("_id", None)
+        suggestions.append(item)
+    return {"suggestions": suggestions}
+
+
+@api_router.post("/roadmap/{sid}/apply")
+async def roadmap_apply(sid: str, user=Depends(current_user)):
+    uid = user["user_id"]
+    s = await db.roadmap_suggestions.find_one({"id": sid, "user_id": uid}, {"_id": 0})
+    if not s:
+        raise HTTPException(404, "Suggestion not found")
+    await db.domains.update_one({"id": s["domainId"], "user_id": uid}, {"$set": {"targetFrequency": s["suggestedTarget"]}})
+    await db.roadmap_suggestions.update_one({"id": sid, "user_id": uid}, {"$set": {"status": "accepted"}})
+    return {"ok": True, "domainId": s["domainId"], "targetFrequency": s["suggestedTarget"]}
+
+
+@api_router.post("/roadmap/{sid}/dismiss")
+async def roadmap_dismiss(sid: str, user=Depends(current_user)):
+    result = await db.roadmap_suggestions.update_one({"id": sid, "user_id": user["user_id"]}, {"$set": {"status": "dismissed"}})
+    if not result.matched_count:
+        raise HTTPException(404, "Suggestion not found")
+    return {"ok": True}
+
+
+@api_router.post("/companion/feedback")
+async def companion_feedback(input: FeedbackInput, user=Depends(current_user)):
+    uid = user["user_id"]
+    profile = await db.profiles.find_one({"user_id": uid}, {"_id": 0}) or {"user_id": uid, "northStar": "", "companionTone": "gentle companion", "directiveness": 50}
+    d = int(profile.get("directiveness", 50))
+    if input.kind == "too_pushy":
+        d = max(0, d - 15)
+    elif input.kind == "too_soft":
+        d = min(100, d + 15)
+    else:
+        raise HTTPException(400, "Unknown feedback kind")
+    profile["directiveness"] = d
+    profile["user_id"] = uid
+    await db.profiles.replace_one({"user_id": uid}, {k: v for k, v in profile.items() if k != "_id"}, upsert=True)
+    await db.companion_feedback.insert_one({"user_id": uid, "kind": input.kind, "directiveness": d, "created_at": now_iso()})
+    return {"directiveness": d}
 
 
 # Include the router in the main app

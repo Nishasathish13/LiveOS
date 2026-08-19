@@ -435,6 +435,16 @@ async def companion_feedback(input: FeedbackInput, user=Depends(current_user)):
     return {"directiveness": d}
 
 
+@api_router.delete("/account")
+async def delete_account(user=Depends(current_user)):
+    uid = user["user_id"]
+    for coll in ["profiles", "domains", "daily_logs", "tasks", "reflection_summaries", "companion_messages", "roadmap_suggestions", "companion_feedback"]:
+        await db[coll].delete_many({"user_id": uid})
+    await db.user_sessions.delete_many({"user_id": uid})
+    await db.users.delete_one({"user_id": uid})
+    return {"ok": True}
+
+
 # Include the router in the main app
 app.include_router(api_router)
 

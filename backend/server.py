@@ -92,6 +92,14 @@ class GoalBreakdownInput(BaseModel):
     goal: str
     domainId: Optional[str] = None
 
+class DomainEditInput(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    targetFrequency: Optional[int] = None
+    goals: Optional[List[str]] = None
+
 class FeedbackInput(BaseModel):
     kind: str  # 'too_pushy' | 'too_soft'
 
@@ -395,7 +403,37 @@ async def roadmap_generate(user=Depends(current_user)):
         await db.roadmap_suggestions.insert_one(item)
         item.pop("_id", None)
         suggestions.append(item)
+    await db.profiles.update_one({"user_id": uid}, {"$set": {"lastRoadmapAt": now_iso()}}, upsert=True)
     return {"suggestions": suggestions}
+
+
+@api_router.patch("/domains/{domain_id}")
+async def edit_domain(domain_id: str, input: DomainEditInput, user=Depends(current_user)):
+    uid = user["user_id"]
+    updates = {k: v for k, v in input.model_dump().items() if v is not None}
+    if "targetFrequency" in updates:
+        try:
+            updates["targetFrequency"] = max(1, min(7, int(updates["targetFrequency"])))
+        except (ValueError, TypeError):
+            updates.pop("targetFrequency")
+    if "goals" in updates:
+        updates["goals"] = [str(g).strip() for g in updates["goals"] if str(g).strip()]
+    if not updates:
+        raise HTTPException(400, "No changes provided")
+    result = await db.domains.update_one({"id": domain_id, "user_id": uid}, {"$set": updates})
+    if not result.matched_count:
+        raise HTTPException(404, "Domain not found")
+    return await db.domains.find_one({"id": domain_id, "user_id": uid}, {"_id": 0})
+
+
+@api_router.delete("/domains/{domain_id}")
+async def remove_domain(domain_id: str, user=Depends(current_user)):
+    uid = user["user_id"]
+    result = await db.domains.delete_one({"id": domain_id, "user_id": uid})
+    if not result.deleted_count:
+        raise HTTPException(404, "Domain not found")
+    await db.roadmap_suggestions.delete_many({"user_id": uid, "domainId": domain_id})
+    return {"ok": True}
 
 
 @api_router.post("/roadmap/{sid}/apply")
